@@ -1,0 +1,1 @@
+TMDB_API_KEY=여기에_TMDB_API_키를_붙여넣으세요
