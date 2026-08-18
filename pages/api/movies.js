@@ -7,6 +7,24 @@ function normalizeItems(items, isTv) {
   });
 }
 
+async function attachPaymentBadges(items, endpoint, apiKey) {
+  const results = await Promise.all(
+    items.map(async (item) => {
+      try {
+        const r = await fetch(`https://api.themoviedb.org/3/${endpoint}/${item.id}/watch/providers?api_key=${apiKey}`);
+        const data = await r.json();
+        const kr = data && data.results && data.results.KR;
+        const included = !!(kr && kr.flatrate && kr.flatrate.length > 0);
+        const paidOnly = !included && !!(kr && ((kr.rent && kr.rent.length > 0) || (kr.buy && kr.buy.length > 0)));
+        return { ...item, paymentBadge: included ? 'included' : (paidOnly ? 'paid' : null) };
+      } catch (e) {
+        return { ...item, paymentBadge: null };
+      }
+    })
+  );
+  return results;
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) {
@@ -63,7 +81,10 @@ export default async function handler(req, res) {
   try {
     const r = await fetch(url);
     const data = await r.json();
-    if (data && data.results) data.results = normalizeItems(data.results, isTv);
+    if (data && data.results) {
+      data.results = normalizeItems(data.results, isTv);
+      data.results = await attachPaymentBadges(data.results, endpoint, apiKey);
+    }
     res.status(r.status).json(data);
   } catch (e) {
     res.status(500).json({ error: '목록을 불러오지 못했어요.' });
