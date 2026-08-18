@@ -59,6 +59,8 @@ function MovieCard({ movie, onClick }) {
           ? <img src={IMG_POSTER + movie.poster_path} alt={movie.title} />
           : <div className="poster-empty">포스터 없음</div>}
         {movie.vote_average > 0 && <span className="rating-badge">{movie.vote_average.toFixed(1)}</span>}
+        {movie.paymentBadge === 'included' && <span className="payment-badge payment-included">구독포함</span>}
+        {movie.paymentBadge === 'paid' && <span className="payment-badge payment-paid">결제필요</span>}
       </div>
       <div className="movie-info">
         <div className="movie-title">{movie.title}</div>
