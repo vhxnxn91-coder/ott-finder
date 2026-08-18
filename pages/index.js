@@ -10,6 +10,11 @@ const SORT_OPTIONS = [
 ];
 const RATING_OPTIONS = [0, 6, 7, 8, 9];
 const YEAR_OPTIONS = ['', '2026', '2025', '2024', '2023'];
+const TYPE_OPTIONS = [
+  { value: 'movie', label: '영화' },
+  { value: 'tv', label: '드라마' },
+  { value: 'documentary', label: '다큐멘터리' },
+];
 
 function Sprockets() {
   const holes = new Array(28).fill(0);
@@ -17,6 +22,15 @@ function Sprockets() {
     <div className="sprockets">
       {holes.map((_, i) => <span key={i} />)}
     </div>
+  );
+}
+
+function HomeMark() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9.5" stroke="var(--marquee)" strokeWidth="2" />
+      <path d="M10 8.2v7.6L16 12l-6-3.8z" fill="var(--marquee)" />
+    </svg>
   );
 }
 
@@ -71,7 +85,7 @@ function ProviderGroup({ label, items, tone }) {
   );
 }
 
-function MovieModal({ movieId, onClose }) {
+function MovieModal({ movieId, mediaType, onClose }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,13 +94,13 @@ function MovieModal({ movieId, onClose }) {
     let cancelled = false;
     setLoading(true);
     setError('');
-    fetch(`/api/movie/${movieId}`)
+    fetch(`/api/movie/${movieId}?type=${mediaType}`)
       .then((r) => { if (!r.ok) throw new Error('fail'); return r.json(); })
       .then((data) => { if (!cancelled) setDetail(data); })
       .catch(() => { if (!cancelled) setError('정보를 불러오지 못했어요.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [movieId]);
+  }, [movieId, mediaType]);
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -141,7 +155,8 @@ function MovieModal({ movieId, onClose }) {
 function FilterDrawer({
   open, onClose, genres, selectedGenre, setSelectedGenre,
   sortBy, setSortBy, minRating, setMinRating, releaseYear, setReleaseYear,
-  flatrateOnly, setFlatrateOnly, onAcclaimed, onClearAll,
+  flatrateOnly, setFlatrateOnly, contentType, setContentType,
+  onAcclaimed, onClearAll,
 }) {
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose(); }
@@ -160,6 +175,15 @@ function FilterDrawer({
         </div>
 
         <button onClick={onAcclaimed} className="acclaimed-btn">⭐ 극찬받은 작품만 보기</button>
+
+        <div className="drawer-section">
+          <div className="drawer-section-title">종류</div>
+          <div className="drawer-chip-row">
+            {TYPE_OPTIONS.map((t) => (
+              <button key={t.value} onClick={() => setContentType(t.value)} className={`drawer-chip${contentType === t.value ? ' active' : ''}`}>{t.label}</button>
+            ))}
+          </div>
+        </div>
 
         <div className="drawer-section">
           <div className="drawer-section-title">정렬</div>
@@ -196,15 +220,17 @@ function FilterDrawer({
           </label>
         </div>
 
-        <div className="drawer-section">
-          <div className="drawer-section-title">장르</div>
-          <div className="drawer-genre-list">
-            <button onClick={() => setSelectedGenre('')} className={`drawer-genre-item${!selectedGenre ? ' active' : ''}`}>전체</button>
-            {genres.map((g) => (
-              <button key={g.id} onClick={() => setSelectedGenre(String(g.id))} className={`drawer-genre-item${String(selectedGenre) === String(g.id) ? ' active' : ''}`}>{g.name}</button>
-            ))}
+        {contentType !== 'documentary' && (
+          <div className="drawer-section">
+            <div className="drawer-section-title">장르</div>
+            <div className="drawer-genre-list">
+              <button onClick={() => setSelectedGenre('')} className={`drawer-genre-item${!selectedGenre ? ' active' : ''}`}>전체</button>
+              {genres.map((g) => (
+                <button key={g.id} onClick={() => setSelectedGenre(String(g.id))} className={`drawer-genre-item${String(selectedGenre) === String(g.id) ? ' active' : ''}`}>{g.name}</button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <button onClick={onClearAll} className="drawer-clear-btn">필터 초기화</button>
       </div>
@@ -213,7 +239,9 @@ function FilterDrawer({
 }
 
 export default function Home() {
-  const [genres, setGenres] = useState([]);
+  const [contentType, setContentType] = useState('movie');
+  const [movieGenres, setMovieGenres] = useState([]);
+  const [tvGenres, setTvGenres] = useState([]);
   const [providers, setProviders] = useState([]);
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [selectedGenre, setSelectedGenre] = useState('');
@@ -231,9 +259,10 @@ export default function Home() {
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState('');
 
-  const [openMovieId, setOpenMovieId] = useState(null);
+  const [openMovie, setOpenMovie] = useState(null);
 
   const requestSeq = useRef(0);
+  const genres = contentType === 'tv' ? tvGenres : movieGenres;
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query.trim()), 450);
@@ -241,7 +270,8 @@ export default function Home() {
   }, [query]);
 
   useEffect(() => {
-    fetch('/api/genres').then((r) => r.json()).then((d) => setGenres(d.genres || [])).catch(() => {});
+    fetch('/api/genres?type=movie').then((r) => r.json()).then((d) => setMovieGenres(d.genres || [])).catch(() => {});
+    fetch('/api/genres?type=tv').then((r) => r.json()).then((d) => setTvGenres(d.genres || [])).catch(() => {});
     fetch('/api/providers').then((r) => r.json()).then((d) => {
       const list = (d.results || []).slice().sort((a, b) => {
         const pa = (a.display_priorities && a.display_priorities.KR) ?? 999;
@@ -252,12 +282,17 @@ export default function Home() {
     }).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    setSelectedGenre('');
+  }, [contentType]);
+
   const fetchPage = useCallback((pageNum, replace) => {
     const mySeq = ++requestSeq.current;
     setLoadingList(true);
     setListError('');
     const params = new URLSearchParams();
     params.set('page', String(pageNum));
+    params.set('type', contentType);
     if (debouncedQuery) {
       params.set('query', debouncedQuery);
     } else {
@@ -279,14 +314,14 @@ export default function Home() {
       })
       .catch(() => { if (mySeq === requestSeq.current) setListError('목록을 불러오지 못했어요.'); })
       .finally(() => { if (mySeq === requestSeq.current) setLoadingList(false); });
-  }, [debouncedQuery, selectedGenre, selectedProvider, providers, flatrateOnly, sortBy, minRating, releaseYear]);
+  }, [debouncedQuery, selectedGenre, selectedProvider, providers, flatrateOnly, sortBy, minRating, releaseYear, contentType]);
 
   useEffect(() => {
     if (!debouncedQuery && providers.length === 0) return;
     setMovies([]);
     fetchPage(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, selectedGenre, selectedProvider, providers.length, flatrateOnly, sortBy, minRating, releaseYear]);
+  }, [debouncedQuery, selectedGenre, selectedProvider, providers.length, flatrateOnly, sortBy, minRating, releaseYear, contentType]);
 
   const filtersDisabled = !!debouncedQuery;
 
@@ -301,9 +336,21 @@ export default function Home() {
     setMinRating(0);
     setReleaseYear('');
     setFlatrateOnly(false);
+    setContentType('movie');
+  }
+  function goHome() {
+    setQuery('');
+    setSelectedProvider(null);
+    clearAllFilters();
+    setDrawerOpen(false);
+    setOpenMovie(null);
   }
 
   const activeFilters = [];
+  if (contentType !== 'movie') {
+    const t = TYPE_OPTIONS.find((x) => x.value === contentType);
+    activeFilters.push({ label: t ? t.label : contentType, clear: () => setContentType('movie') });
+  }
   if (selectedGenre) {
     const g = genres.find((x) => String(x.id) === String(selectedGenre));
     activeFilters.push({ label: g ? g.name : '장르', clear: () => setSelectedGenre('') });
@@ -328,7 +375,10 @@ export default function Home() {
 
       <div className="header">
         <div className="header-top">
-          <div className="eyebrow">OTT FINDER</div>
+          <button onClick={goHome} className="logo-btn" aria-label="홈으로">
+            <HomeMark />
+            <span className="eyebrow">OTT FINDER</span>
+          </button>
           <button onClick={() => setDrawerOpen(true)} className="hamburger-btn" aria-label="필터 메뉴">☰</button>
         </div>
         <h1 className="title">어디서 볼 수 있을까?</h1>
@@ -337,7 +387,7 @@ export default function Home() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="영화 제목으로 검색"
+          placeholder="제목으로 검색"
           className="search-input"
         />
 
@@ -377,7 +427,7 @@ export default function Home() {
 
         <div className="movie-grid">
           {movies.map((m, i) => (
-            <MovieCard key={`${m.id}-${i}`} movie={m} onClick={() => setOpenMovieId(m.id)} />
+            <MovieCard key={`${m.id}-${i}`} movie={m} onClick={() => setOpenMovie({ id: m.id, type: contentType === 'tv' ? 'tv' : 'movie' })} />
           ))}
         </div>
 
@@ -392,7 +442,7 @@ export default function Home() {
 
       <div className="footer">영화 데이터 제공: TMDB · OTT 이용 정보 제공: JustWatch</div>
 
-      {openMovieId && <MovieModal movieId={openMovieId} onClose={() => setOpenMovieId(null)} />}
+      {openMovie && <MovieModal movieId={openMovie.id} mediaType={openMovie.type} onClose={() => setOpenMovie(null)} />}
 
       <FilterDrawer
         open={drawerOpen}
@@ -408,6 +458,8 @@ export default function Home() {
         setReleaseYear={setReleaseYear}
         flatrateOnly={flatrateOnly}
         setFlatrateOnly={setFlatrateOnly}
+        contentType={contentType}
+        setContentType={setContentType}
         onAcclaimed={applyAcclaimed}
         onClearAll={clearAllFilters}
       />
