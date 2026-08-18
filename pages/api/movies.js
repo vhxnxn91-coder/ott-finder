@@ -1,3 +1,12 @@
+function normalizeItems(items, isTv) {
+  return (items || []).map((it) => {
+    if (isTv) {
+      return { ...it, title: it.name, release_date: it.first_air_date };
+    }
+    return it;
+  });
+}
+
 export default async function handler(req, res) {
   const apiKey = process.env.TMDB_API_KEY;
   if (!apiKey) {
@@ -14,18 +23,29 @@ export default async function handler(req, res) {
     sort = 'popularity',
     minRating = '0',
     year = '',
+    type = 'movie',
   } = req.query;
+
+  const isTv = type === 'tv';
+  const isDocumentary = type === 'documentary';
+  const endpoint = isTv ? 'tv' : 'movie';
 
   let url;
   if (query) {
-    url = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&language=ko-KR&query=${encodeURIComponent(query)}&page=${encodeURIComponent(page)}&region=KR`;
+    url = `https://api.themoviedb.org/3/search/${endpoint}?api_key=${apiKey}&language=ko-KR&query=${encodeURIComponent(query)}&page=${encodeURIComponent(page)}&region=KR`;
   } else {
     let sortBy = 'popularity.desc';
     if (sort === 'rating') sortBy = 'vote_average.desc';
-    if (sort === 'latest') sortBy = 'primary_release_date.desc';
+    if (sort === 'latest') sortBy = isTv ? 'first_air_date.desc' : 'primary_release_date.desc';
 
-    url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&language=ko-KR&region=KR&watch_region=KR&sort_by=${sortBy}&page=${encodeURIComponent(page)}`;
-    if (genre) url += `&with_genres=${encodeURIComponent(genre)}`;
+    url = `https://api.themoviedb.org/3/discover/${endpoint}?api_key=${apiKey}&language=ko-KR&region=KR&watch_region=KR&sort_by=${sortBy}&page=${encodeURIComponent(page)}`;
+
+    if (isDocumentary) {
+      url += `&with_genres=99`;
+    } else if (genre) {
+      url += `&with_genres=${encodeURIComponent(genre)}`;
+    }
+
     if (providers) url += `&with_watch_providers=${encodeURIComponent(providers)}`;
     if (flatrateOnly === 'true') url += `&watch_monetization_types=flatrate`;
 
@@ -35,14 +55,17 @@ export default async function handler(req, res) {
     } else if (sort === 'rating') {
       url += `&vote_count.gte=50`;
     }
-    if (year) url += `&primary_release_year=${encodeURIComponent(year)}`;
+    if (year) {
+      url += isTv ? `&first_air_date_year=${encodeURIComponent(year)}` : `&primary_release_year=${encodeURIComponent(year)}`;
+    }
   }
 
   try {
     const r = await fetch(url);
     const data = await r.json();
+    if (data && data.results) data.results = normalizeItems(data.results, isTv);
     res.status(r.status).json(data);
   } catch (e) {
-    res.status(500).json({ error: '영화 목록을 불러오지 못했어요.' });
+    res.status(500).json({ error: '목록을 불러오지 못했어요.' });
   }
 }
